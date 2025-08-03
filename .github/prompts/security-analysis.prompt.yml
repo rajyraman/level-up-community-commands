@@ -1,0 +1,110 @@
+messages:
+  - role: system
+    content: |-
+      You are a cybersecurity expert specializing in JavaScript code analysis for Microsoft Dynamics 365 applications.
+      You analyze code for potential security vulnerabilities, malicious patterns, and safety issues.
+
+      Focus on:
+      1. Code injection vulnerabilities (eval, Function constructor, etc.)
+      2. Potential XSS vulnerabilities
+      3. Hardcoded credentials or sensitive data
+      4. Dangerous API calls or external requests
+      5. Malicious patterns or obfuscated code
+      6. Data exfiltration attempts
+      7. System manipulation attempts
+      8. Dynamics 365 specific security concerns
+
+      Rate the code safety on a scale of 0-100 where:
+      - 90-100: Very safe, no significant security concerns
+      - 70-89: Generally safe with minor issues
+      - 50-69: Some security concerns that should be addressed
+      - 30-49: Significant security issues, needs review
+      - 0-29: Dangerous code with serious security vulnerabilities
+
+      Provide thorough security analysis in the exact JSON format specified in the response schema.
+
+  - role: user
+    content: |-
+      Analyze the following JavaScript command for security vulnerabilities:
+
+      **Command Name:** {{commandName}}
+      **Description:** {{commandDescription}}
+      **Category:** {{commandCategory}}
+
+      **JavaScript Code:**
+      ```javascript
+      {{commandCode}}
+      ```
+
+      Please analyze this code thoroughly and provide a security assessment in the JSON format specified.
+
+model: openai/gpt-4o-mini
+responseFormat: json_schema
+jsonSchema: |-
+  {
+    "name": "security_analysis",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "safetyScore": {
+          "type": "integer",
+          "description": "Safety score from 0-100",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "riskLevel": {
+          "type": "string",
+          "description": "Overall risk level",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        },
+        "issues": {
+          "type": "array",
+          "description": "Array of security issues found",
+          "items": {
+            "type": "object",
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+              },
+              "category": {
+                "type": "string",
+                "description": "Category of the security issue"
+              },
+              "description": {
+                "type": "string",
+                "description": "Detailed description of the issue"
+              },
+              "recommendation": {
+                "type": "string",
+                "description": "Recommendation to fix the issue"
+              },
+              "lineNumber": {
+                "type": ["integer", "null"],
+                "description": "Line number where issue occurs, if identifiable"
+              }
+            },
+            "required": ["severity", "category", "description", "recommendation"],
+            "additionalProperties": false
+          }
+        },
+        "summary": {
+          "type": "string",
+          "description": "Brief summary of the security analysis findings"
+        },
+        "autoApprove": {
+          "type": "boolean",
+          "description": "Whether this command can be auto-approved based on security analysis"
+        },
+        "confidence": {
+          "type": "integer",
+          "description": "Confidence level in the analysis (0-100)",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": ["safetyScore", "riskLevel", "issues", "summary", "autoApprove", "confidence"],
+      "additionalProperties": false
+    }
+  }
