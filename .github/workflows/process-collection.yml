@@ -3,6 +3,17 @@ name: 🤖 Process Collection Submission
 on:
   issues:
     types: [opened, edited, labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to process'
+        required: true
+        type: number
+      force_process:
+        description: 'Force processing even if already processed'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   issues: write
@@ -14,9 +25,10 @@ jobs:
   # Maintainer override job - runs when maintainer adds approval labels
   maintainer-override:
     if: |
-      (contains(github.event.issue.labels.*.name, 'maintainer-approved') ||
-       contains(github.event.issue.labels.*.name, 'force-approve')) &&
-      contains(github.event.issue.labels.*.name, 'collection')
+      ((contains(github.event.issue.labels.*.name, 'maintainer-approved') ||
+        contains(github.event.issue.labels.*.name, 'force-approve')) &&
+       contains(github.event.issue.labels.*.name, 'collection')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.force_process == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: 🚀 Checkout repository
@@ -201,10 +213,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Regular automated processing job
   process-collection:
     if: |
-      contains(github.event.issue.labels.*.name, 'collection') &&
-      contains(github.event.issue.labels.*.name, 'new-submission') &&
-      !contains(github.event.issue.labels.*.name, 'maintainer-approved') &&
-      !contains(github.event.issue.labels.*.name, 'force-approve')
+      (contains(github.event.issue.labels.*.name, 'collection') &&
+       contains(github.event.issue.labels.*.name, 'new-submission') &&
+       !contains(github.event.issue.labels.*.name, 'maintainer-approved') &&
+       !contains(github.event.issue.labels.*.name, 'force-approve')) ||
+      (github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - name: 🚀 Checkout repository
@@ -230,8 +243,15 @@ jobs:
       - name: 📝 Parse issue data
         id: parse-issue
         run: |
-          echo "Processing issue #${{ github.event.issue.number }}"
-          node scripts/parse-collection-issue.js '${{ toJson(github.event.issue) }}' > issue-data.json
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger detected, fetching issue #${{ github.event.inputs.issue_number }}"
+            ISSUE_DATA=$(gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }})
+            echo "Processing issue #${{ github.event.inputs.issue_number }}"
+            echo "$ISSUE_DATA" | node scripts/parse-collection-issue.js > issue-data.json
+          else
+            echo "Processing issue #${{ github.event.issue.number }}"
+            node scripts/parse-collection-issue.js '${{ toJson(github.event.issue) }}' > issue-data.json
+          fi
 
           # Set parsed data as output for other steps
           echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
@@ -239,6 +259,8 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
           echo "issue-parsed=true" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: ✅ Validate GitHub username
         id: validate-username
