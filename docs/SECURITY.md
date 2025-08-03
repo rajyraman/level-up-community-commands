@@ -209,17 +209,6 @@ For Level Up extension security issues:
 - Respect organization data policies
 - Be transparent about any data usage
 
-## ⚖️ Compliance
-
-### Regulatory Compliance
-
-Commands should support compliance with:
-
-- GDPR (General Data Protection Regulation)
-- CCPA (California Consumer Privacy Act)
-- Industry-specific regulations
-- Organizational security policies
-
 ### Microsoft Compliance
 
 - Follow Microsoft security best practices
