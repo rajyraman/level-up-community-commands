@@ -165,7 +165,7 @@
         // Load collections from the API/index
         async function loadCollections() {
             try {
-                const response = await fetch('../collections/index.json');
+                const response = await fetch('./collections/index.json');
                 const data = await response.json();
 
                 updateStatistics(data);
@@ -348,7 +348,7 @@
                 // Ensure the window is focused first
                 window.focus();
 
-                const response = await fetch(`../collections/${username}/collections/${fileName}`);
+                const response = await fetch(`./collections/${username}/collections/${fileName}`);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
@@ -428,7 +428,7 @@
         // View commands in modal
         async function viewCommands(username, fileName, collectionName) {
             try {
-                const response = await fetch(`../collections/${username}/collections/${fileName}`);
+                const response = await fetch(`./collections/${username}/collections/${fileName}`);
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
