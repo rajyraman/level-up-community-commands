@@ -10,7 +10,6 @@
         "parse-collection": "node scripts/parse-collection-issue.js",
         "extract-code": "node scripts/extract-collection-code.js",
         "process-codeql": "node scripts/process-codeql-results.js",
-        "ai-safety": "node scripts/ai-safety-check.js",
         "calculate-approval": "node scripts/calculate-approval-score.js",
         "organize-collection": "node scripts/organize-collection.js",
         "update-index": "node -e \"const CollectionOrganizer = require('./scripts/organize-collection.js'); new CollectionOrganizer().updateCollectionsIndex('./collections');\"",

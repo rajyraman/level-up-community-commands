@@ -312,7 +312,7 @@ jobs:
         uses: actions/ai-inference@v1
         with:
           prompt-file: .github/prompts/security-analysis.prompt.yml
-          variables: |
+          input: |
             commandName: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].name }}
             commandDescription: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].description }}
             commandCategory: ${{ fromJson(steps.parse-issue.outputs.parsed-data).category }}
