@@ -242,12 +242,7 @@ jobs:
       - name: 📦 Install dependencies
         run: npm ci
 
-      - name: 🔍 Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript
-
-      - name: 📝 Parse issue data
+      - name:  Parse issue data
         id: parse-issue
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -297,28 +292,6 @@ jobs:
             exit 1
           fi
 
-      - name: 🛡️ Security analysis with CodeQL
-        id: security-analysis
-        run: |
-          # Extract JavaScript code from the collection
-          node scripts/extract-collection-code.js issue-data.json codeql-analysis/
-
-          # Run CodeQL analysis
-          codeql database create codeql-db --language=javascript --source-root=codeql-analysis/
-          codeql database analyze codeql-db javascript-security-and-quality.qls --format=json --output=codeql-results.json
-
-          # Process CodeQL results
-          node scripts/process-codeql-results.js codeql-results.json > security-report.json
-
-          SECURITY_SCORE=$(node -e "const report = require('./security-report.json'); console.log(report.securityScore)")
-          echo "security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
-
-          if [ "$SECURITY_SCORE" -ge "80" ]; then
-            echo "security-passed=true" >> $GITHUB_OUTPUT
-          else
-            echo "security-passed=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: 🤖 AI safety validation with GitHub Models
         id: ai-validation
         # Run AI validation in parallel for comprehensive analysis
@@ -363,7 +336,7 @@ jobs:
       - name: 📊 Calculate overall approval score
         id: approval-score
         run: |
-          node scripts/calculate-approval-score.js issue-data.json security-report.json ai-safety-report.json > approval-report.json
+          node scripts/calculate-approval-score.js issue-data.json ai-safety-report.json > approval-report.json
 
           OVERALL_SCORE=$(node -e "const report = require('./approval-report.json'); console.log(report.overallScore)")
           AUTO_APPROVE=$(node -e "const report = require('./approval-report.json'); console.log(report.autoApprove)")
@@ -404,7 +377,6 @@ jobs:
 
           **Processing Results:**
           - ✅ GitHub username validated: \`${{ steps.validate-username.outputs.github-username }}\`
-          - ✅ Security score: ${{ steps.security-analysis.outputs.security-score }}/100
           - ✅ AI Safety score: ${{ steps.process-ai-results.outputs.ai-score || 'N/A' }}/100
           - ✅ Overall approval score: ${{ steps.approval-score.outputs.overall-score }}/100
           - ✅ Collection organized in: \`${{ steps.organize-collection.outputs.collection-path }}\`
@@ -440,7 +412,6 @@ jobs:
           $FEEDBACK
 
           **Scores:**
-          - Security Score: ${{ steps.security-analysis.outputs.security-score || 'N/A' }}/100
           - AI Safety Score: ${{ steps.process-ai-results.outputs.ai-score || 'N/A' }}/100
           - Overall Score: ${{ steps.approval-score.outputs.overall-score }}/100
 

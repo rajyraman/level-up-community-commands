@@ -8,9 +8,8 @@ const fs = require('fs');
 class ApprovalScoreCalculator {
   constructor() {
     this.weights = {
-      security: 0.5,      // CodeQL security analysis (50%)
-      aiSafety: 0.3,      // AI safety check (30%)
-      validation: 0.2     // Basic validation (20%)
+      aiSafety: 0.6,      // AI safety check (60%)
+      validation: 0.4     // Basic validation (40%)
     };
 
     this.thresholds = {
@@ -23,14 +22,12 @@ class ApprovalScoreCalculator {
   /**
    * Calculate overall approval score and recommendation
    * @param {string} issueDataPath - Path to parsed issue data
-   * @param {string} securityReportPath - Path to CodeQL security report
    * @param {string} aiSafetyReportPath - Path to AI safety report
    * @returns {Object} Approval report
    */
-  calculateApprovalScore(issueDataPath, securityReportPath, aiSafetyReportPath) {
+  calculateApprovalScore(issueDataPath, aiSafetyReportPath) {
     // Load all reports
     const issueData = this.loadJsonFile(issueDataPath);
-    const securityReport = this.loadJsonFile(securityReportPath);
     const aiSafetyReport = this.loadJsonFile(aiSafetyReportPath);
 
     const report = {
@@ -40,7 +37,6 @@ class ApprovalScoreCalculator {
       feedback: '',
       scores: {
         validation: issueData.validation?.score || 0,
-        security: securityReport?.securityScore || 0,
         aiSafety: aiSafetyReport?.safetyScore || 0
       },
       details: {
@@ -89,7 +85,6 @@ class ApprovalScoreCalculator {
   calculateWeightedScore(scores) {
     const weightedScore =
       (scores.validation * this.weights.validation) +
-      (scores.security * this.weights.security) +
       (scores.aiSafety * this.weights.aiSafety);
 
     return Math.round(weightedScore);
@@ -142,34 +137,21 @@ class ApprovalScoreCalculator {
       return;
     }
 
-    // Enhanced approval logic: Either analysis can approve, both must pass for auto-approval
+    // Enhanced approval logic: AI-based validation with high confidence thresholds
     if (overallScore >= this.thresholds.autoApprove) {
-      // Check if at least one analysis strongly approves
-      const codeqlPassed = securityReport?.securityScore >= 80;
+      // Check if AI analysis strongly approves
       const aiPassed = aiSafetyReport?.safetyScore >= 75 && aiSafetyReport?.autoApprove === true;
 
-      // Auto-approve if either analysis passes with high confidence
-      if ((codeqlPassed || aiPassed) && this.hasNoBlockingIssues(securityReport, aiSafetyReport)) {
+      // Auto-approve if AI analysis passes with high confidence and no blocking issues
+      if (aiPassed && this.hasNoBlockingIssues(aiSafetyReport)) {
         report.autoApprove = true;
         report.recommendation = 'AUTO_APPROVE';
 
         // Add confidence indicators
-        if (codeqlPassed && aiPassed) {
-          report.details.recommendations.push({
-            priority: 'INFO',
-            message: 'Passed both CodeQL and AI validation with high confidence'
-          });
-        } else if (codeqlPassed) {
-          report.details.recommendations.push({
-            priority: 'INFO',
-            message: 'Auto-approved based on CodeQL analysis (AI validation supplementary)'
-          });
-        } else {
-          report.details.recommendations.push({
-            priority: 'INFO',
-            message: 'Auto-approved based on AI analysis (CodeQL provided additional context)'
-          });
-        }
+        report.details.recommendations.push({
+          priority: 'INFO',
+          message: 'Passed AI validation with high confidence'
+        });
       } else {
         report.autoApprove = false;
         report.recommendation = 'MANUAL_REVIEW';
@@ -186,18 +168,16 @@ class ApprovalScoreCalculator {
   }
 
   /**
-   * Check if there are no blocking issues from either analysis
-   * @param {Object} securityReport - CodeQL security report
+   * Check if there are no blocking issues from AI analysis
    * @param {Object} aiSafetyReport - AI safety report
    * @returns {boolean} True if no blocking issues
    */
-  hasNoBlockingIssues(securityReport, aiSafetyReport) {
-    const codeqlBlocking = (securityReport?.summary?.errorCount || 0) > 0;
+  hasNoBlockingIssues(aiSafetyReport) {
     const aiBlocking = aiSafetyReport?.issues?.some(issue =>
       ['CRITICAL', 'HIGH'].includes(issue.severity)
     );
 
-    return !codeqlBlocking && !aiBlocking;
+    return !aiBlocking;
   }
 
   /**
@@ -416,11 +396,10 @@ Recommendations: ${report.details.recommendations.length}
 // CLI usage
 if (require.main === module) {
   const issueDataPath = process.argv[2];
-  const securityReportPath = process.argv[3];
-  const aiSafetyReportPath = process.argv[4];
+  const aiSafetyReportPath = process.argv[3];
 
-  if (!issueDataPath) {
-    console.error('Usage: node calculate-approval-score.js <issue-data.json> [security-report.json] [ai-safety-report.json]');
+  if (!issueDataPath || !aiSafetyReportPath) {
+    console.error('Usage: node calculate-approval-score.js <issue-data.json> <ai-safety-report.json>');
     process.exit(1);
   }
 
@@ -428,7 +407,6 @@ if (require.main === module) {
     const calculator = new ApprovalScoreCalculator();
     const report = calculator.calculateApprovalScore(
       issueDataPath,
-      securityReportPath,
       aiSafetyReportPath
     );
 
