@@ -327,12 +327,23 @@ jobs:
         run: |
           # Extract results from AI inference action
           AI_RESPONSE='${{ steps.ai-validation.outputs.response }}'
-          echo "AI Response: $AI_RESPONSE"
+          echo "Raw AI Response: $AI_RESPONSE"
+
+          # Extract JSON from markdown code blocks if present
+          if echo "$AI_RESPONSE" | grep -q '```json'; then
+            echo "Extracting JSON from markdown code blocks..."
+            AI_JSON=$(echo "$AI_RESPONSE" | sed -n '/```json/,/```/p' | sed '1d;$d')
+          else
+            echo "Using response as-is (no markdown blocks detected)..."
+            AI_JSON="$AI_RESPONSE"
+          fi
+
+          echo "Extracted JSON: $AI_JSON"
 
           # Parse the JSON response
-          AI_SCORE=$(echo "$AI_RESPONSE" | jq -r '.safetyScore // 50')
-          RISK_LEVEL=$(echo "$AI_RESPONSE" | jq -r '.riskLevel // "MEDIUM"')
-          AUTO_APPROVE=$(echo "$AI_RESPONSE" | jq -r '.autoApprove // false')
+          AI_SCORE=$(echo "$AI_JSON" | jq -r '.safetyScore // 50')
+          RISK_LEVEL=$(echo "$AI_JSON" | jq -r '.riskLevel // "MEDIUM"')
+          AUTO_APPROVE=$(echo "$AI_JSON" | jq -r '.autoApprove // false')
 
           echo "AI Safety Score: $AI_SCORE"
           echo "Risk Level: $RISK_LEVEL"
@@ -347,8 +358,8 @@ jobs:
             echo "ai-passed=false" >> $GITHUB_OUTPUT
           fi
 
-          # Store AI results as JSON for approval calculation
-          echo "$AI_RESPONSE" > ai-safety-report.json
+          # Store clean JSON for approval calculation
+          echo "$AI_JSON" > ai-safety-report.json
 
       - name: 📊 Calculate overall approval score
         id: approval-score
