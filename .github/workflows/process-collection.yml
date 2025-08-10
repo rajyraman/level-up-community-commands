@@ -73,7 +73,7 @@ jobs:
           echo "Processing maintainer override for issue #${{ github.event.issue.number }}"
           # Write the JSON to a temp file to avoid shell escaping issues
           echo '${{ toJson(github.event.issue) }}' > temp-issue.json
-          
+
           # Parse the issue data from the temp file using stdin
           cat temp-issue.json | node scripts/parse-collection-issue.js > issue-data.json
 
@@ -294,28 +294,44 @@ jobs:
 
       - name: 🤖 AI safety validation with GitHub Models
         id: ai-validation
-        # Run AI validation in parallel for comprehensive analysis
         uses: actions/ai-inference@v1
         with:
-          prompt-file: .github/prompts/security-analysis.prompt.yml
-          input: |
-            commandName: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].name }}
-            commandDescription: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].description }}
-            commandCategory: ${{ fromJson(steps.parse-issue.outputs.parsed-data).category }}
-            commandCode: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].code }}
+          model: openai/gpt-5-mini
+          system-prompt: |
+            You are a cybersecurity expert specializing in JavaScript code analysis for Microsoft Dynamics 365 applications.
+            Analyze the provided JavaScript code for security vulnerabilities and safety issues.
+
+            Return a JSON object with the following structure:
+            {
+              "safetyScore": <number 0-100>,
+              "riskLevel": "<LOW|MEDIUM|HIGH|CRITICAL>",
+              "autoApprove": <boolean>,
+              "summary": "<brief summary of findings>",
+              "issues": [{"severity": "<LOW|MEDIUM|HIGH|CRITICAL>", "description": "<issue description>"}]
+            }
+
+            Rate 90-100 for very safe code, 70-89 for generally safe, 50-69 for some concerns, 30-49 for significant issues, 0-29 for dangerous code.
+            Set autoApprove to true only if safetyScore >= 75 and no HIGH or CRITICAL issues found.
+          prompt: |
+            Analyze this Dynamics 365 JavaScript command for security vulnerabilities:
+
+            Command Name: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].name }}
+            Command Category: ${{ fromJson(steps.parse-issue.outputs.parsed-data).metadata.category }}
+
+            JavaScript Code:
+            ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].code }}
 
       - name: 📊 Process AI validation results
         id: process-ai-results
-        # Process AI results for comprehensive analysis
         run: |
-          # Extract results from AI inference
+          # Extract results from AI inference action
           AI_RESPONSE='${{ steps.ai-validation.outputs.response }}'
           echo "AI Response: $AI_RESPONSE"
 
           # Parse the JSON response
-          AI_SCORE=$(echo "$AI_RESPONSE" | jq -r '.safetyScore')
-          RISK_LEVEL=$(echo "$AI_RESPONSE" | jq -r '.riskLevel')
-          AUTO_APPROVE=$(echo "$AI_RESPONSE" | jq -r '.autoApprove')
+          AI_SCORE=$(echo "$AI_RESPONSE" | jq -r '.safetyScore // 50')
+          RISK_LEVEL=$(echo "$AI_RESPONSE" | jq -r '.riskLevel // "MEDIUM"')
+          AUTO_APPROVE=$(echo "$AI_RESPONSE" | jq -r '.autoApprove // false')
 
           echo "AI Safety Score: $AI_SCORE"
           echo "Risk Level: $RISK_LEVEL"
@@ -336,10 +352,41 @@ jobs:
       - name: 📊 Calculate overall approval score
         id: approval-score
         run: |
-          node scripts/calculate-approval-score.js issue-data.json ai-safety-report.json > approval-report.json
+          # Get AI results
+          AI_SCORE=${{ steps.process-ai-results.outputs.ai-score }}
+          AI_PASSED=${{ steps.process-ai-results.outputs.ai-passed }}
+          RISK_LEVEL=${{ steps.process-ai-results.outputs.risk-level }}
 
-          OVERALL_SCORE=$(node -e "const report = require('./approval-report.json'); console.log(report.overallScore)")
-          AUTO_APPROVE=$(node -e "const report = require('./approval-report.json'); console.log(report.autoApprove)")
+          echo "AI Safety Score: $AI_SCORE"
+          echo "AI Validation Passed: $AI_PASSED"
+          echo "Risk Level: $RISK_LEVEL"
+
+          # Use AI score directly as overall score (simplified approach)
+          OVERALL_SCORE=$AI_SCORE
+
+          # Auto-approve if AI passed and score >= 75
+          if [ "$AI_PASSED" = "true" ] && [ "$AI_SCORE" -ge "75" ]; then
+            AUTO_APPROVE="true"
+            echo "✅ APPROVED: Collection passes AI validation (Score: $OVERALL_SCORE)"
+          else
+            AUTO_APPROVE="false"
+            echo "⚠️ NEEDS REVIEW: Collection requires manual review (Score: $OVERALL_SCORE, Risk: $RISK_LEVEL)"
+          fi
+
+          # Create approval report for consistency
+          cat > approval-report.json << EOF
+          {
+            "overallScore": $OVERALL_SCORE,
+            "autoApprove": $AUTO_APPROVE,
+            "recommendation": "$([ "$AUTO_APPROVE" = "true" ] && echo "APPROVE" || echo "MANUAL_REVIEW")",
+            "feedback": "$([ "$AUTO_APPROVE" = "true" ] && echo "Collection passed AI safety validation" || echo "Collection requires manual review due to AI safety concerns (Risk: $RISK_LEVEL)")",
+            "scores": {
+              "aiSafety": $AI_SCORE,
+              "riskLevel": "$RISK_LEVEL"
+            },
+            "processedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
 
           echo "overall-score=$OVERALL_SCORE" >> $GITHUB_OUTPUT
           echo "auto-approve=$AUTO_APPROVE" >> $GITHUB_OUTPUT
