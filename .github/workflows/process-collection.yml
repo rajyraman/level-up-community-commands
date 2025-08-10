@@ -20,7 +20,8 @@ permissions:
   contents: write
   pages: write
   id-token: write
-
+  models: read
+  
 jobs:
   # Maintainer override job - runs when maintainer adds approval labels
   maintainer-override:
