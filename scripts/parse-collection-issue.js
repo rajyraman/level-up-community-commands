@@ -47,14 +47,17 @@ class CollectionIssueParser {
   }
 
   extractMetadata(issueData, body) {
+    const dynamicsVersion = this.extractField(body, 'Dynamics 365 Version');
+    const author = this.extractField(body, 'Author Attribution (Optional)');
+    
     return {
       name: this.extractField(body, 'Collection Name') || this.extractTitleCollection(issueData.title),
       description: this.extractField(body, 'Collection Description'),
       category: this.normalizeCategory(this.extractField(body, 'Primary Category')),
       tags: this.extractTags(body),
-      commandCount: parseInt(this.extractField(body, 'command-count')) || 0,
-      dynamicsVersion: this.extractField(body, 'dynamics-version') || 'All versions',
-      author: this.extractField(body, 'author-attribution') || issueData.user?.login,
+      commandCount: parseInt(this.extractField(body, 'Number of Commands')) || 0,
+      dynamicsVersion: (dynamicsVersion && dynamicsVersion !== '_No response_') ? dynamicsVersion : 'All versions',
+      author: (author && author !== '_No response_') ? author : issueData.user?.login,
       submittedBy: issueData.user?.login,
       submittedAt: issueData.created_at
     };
@@ -122,10 +125,11 @@ class CollectionIssueParser {
   }
 
   extractContactInfo(body) {
-    const contactInfo = this.extractField(body, 'contact-info');
+    const contactInfo = this.extractField(body, 'GitHub Username (Required)') || 
+                       this.extractField(body, 'contact-info');
 
     // Clean up the contact info to extract just the username
-    if (contactInfo) {
+    if (contactInfo && contactInfo !== '_No response_') {
       // Remove any @ symbols and whitespace
       return contactInfo.replace(/[@\s]/g, '').toLowerCase();
     }
@@ -330,7 +334,9 @@ class CollectionIssueParser {
     }
 
     // Check safety checklist completion using simple string search
-    const hasCompletedChecklist = body.includes('- [x]') || body.includes('- [X]');
+    const checklistSection = this.extractField(body, 'Safety & Quality Checklist');
+    const hasCompletedChecklist = checklistSection.includes('- [x]') || checklistSection.includes('- [X]');
+    
     if (!hasCompletedChecklist) {
       warnings.push('Safety checklist not completed');
     }

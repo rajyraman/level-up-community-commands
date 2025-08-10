@@ -73,7 +73,9 @@ jobs:
           echo "Processing maintainer override for issue #${{ github.event.issue.number }}"
           # Write the JSON to a temp file to avoid shell escaping issues
           echo '${{ toJson(github.event.issue) }}' > temp-issue.json
-          node scripts/parse-collection-issue.js "$(cat temp-issue.json)" > issue-data.json
+          
+          # Parse the issue data from the temp file using stdin
+          cat temp-issue.json | node scripts/parse-collection-issue.js > issue-data.json
 
           # Set parsed data as output
           echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
@@ -252,13 +254,14 @@ jobs:
             echo "Manual trigger detected, fetching issue #${{ github.event.inputs.issue_number }}"
             gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }} > temp-issue.json
             echo "Processing issue #${{ github.event.inputs.issue_number }}"
-            node scripts/parse-collection-issue.js "$(cat temp-issue.json)" > issue-data.json
           else
             echo "Processing issue #${{ github.event.issue.number }}"
             # Write the JSON to a temp file to avoid shell escaping issues
             echo '${{ toJson(github.event.issue) }}' > temp-issue.json
-            node scripts/parse-collection-issue.js "$(cat temp-issue.json)" > issue-data.json
           fi
+
+          # Parse the issue data from the temp file using stdin
+          cat temp-issue.json | node scripts/parse-collection-issue.js > issue-data.json
 
           # Set parsed data as output for other steps
           echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
