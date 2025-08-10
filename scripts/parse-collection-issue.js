@@ -110,7 +110,7 @@ class CollectionIssueParser {
     const patterns = [
       new RegExp(`### ${fieldId}\\s*\\n\\s*([\\s\\S]*?)(?=\\n### |\\n##|$)`, 'i'),
       new RegExp(`### ${fieldId.replace('-', ' ')}\\s*\\n\\s*([\\s\\S]*?)(?=\\n### |\\n##|$)`, 'i'),
-      new RegExp(`**${fieldId}:**\\s*([\\s\\S]*?)(?=\\n\\*\\*|\\n##|$)`, 'i')
+      new RegExp(`\\*\\*${fieldId}:\\*\\*\\s*([\\s\\S]*?)(?=\\n\\*\\*|\\n##|$)`, 'i')
     ];
 
     for (const pattern of patterns) {
@@ -304,38 +304,70 @@ Contact: ${collection.contactInfo}
 // CLI usage
 if (require.main === module) {
   const issueJson = process.argv[2];
-
-  if (!issueJson) {
-    console.error('Usage: node parse-collection-issue.js <issue-json>');
-    process.exit(1);
-  }
-
-  try {
-    const issueData = JSON.parse(issueJson);
-    const parser = new CollectionIssueParser();
-    const collection = parser.parseIssue(issueData);
-
-    // Output as JSON for workflow consumption
-    console.log(JSON.stringify(collection, null, 2));
-
-    // Log summary to stderr for human readability
-    console.error('\n📦 Collection Parsed:');
-    console.error(parser.generateSummary(collection));
-
-    if (collection.validation.errors.length > 0) {
-      console.error('\n❌ Validation Errors:');
-      collection.validation.errors.forEach(error => console.error(`  • ${error}`));
+  
+  // Handle input from either command line argument or stdin
+  const getInput = () => {
+    if (issueJson) {
+      return Promise.resolve(issueJson);
+    } else {
+      // Read from stdin
+      return new Promise((resolve, reject) => {
+        let data = '';
+        process.stdin.setEncoding('utf8');
+        
+        process.stdin.on('data', (chunk) => {
+          data += chunk;
+        });
+        
+        process.stdin.on('end', () => {
+          resolve(data.trim());
+        });
+        
+        process.stdin.on('error', reject);
+        
+        // Set a timeout in case stdin is not available
+        setTimeout(() => {
+          if (!data) {
+            reject(new Error('No input provided via argument or stdin'));
+          }
+        }, 1000);
+      });
     }
+  };
 
-    if (collection.validation.warnings.length > 0) {
-      console.error('\n⚠️  Validation Warnings:');
-      collection.validation.warnings.forEach(warning => console.error(`  • ${warning}`));
-    }
+  getInput()
+    .then(input => {
+      if (!input) {
+        throw new Error('No issue JSON provided');
+      }
 
-  } catch (error) {
-    console.error('Error parsing issue:', error.message);
-    process.exit(1);
-  }
+      const issueData = JSON.parse(input);
+      const parser = new CollectionIssueParser();
+      const collection = parser.parseIssue(issueData);
+
+      // Output as JSON for workflow consumption
+      console.log(JSON.stringify(collection, null, 2));
+
+      // Log summary to stderr for human readability
+      console.error('\n📦 Collection Parsed:');
+      console.error(parser.generateSummary(collection));
+
+      if (collection.validation.errors.length > 0) {
+        console.error('\n❌ Validation Errors:');
+        collection.validation.errors.forEach(error => console.error(`  • ${error}`));
+      }
+
+      if (collection.validation.warnings.length > 0) {
+        console.error('\n⚠️  Validation Warnings:');
+        collection.validation.warnings.forEach(warning => console.error(`  • ${warning}`));
+      }
+    })
+    .catch(error => {
+      console.error('Error parsing issue:', error.message);
+      console.error('Usage: node parse-collection-issue.js <issue-json>');
+      console.error('   OR: echo "<issue-json>" | node parse-collection-issue.js');
+      process.exit(1);
+    });
 }
 
 module.exports = CollectionIssueParser;

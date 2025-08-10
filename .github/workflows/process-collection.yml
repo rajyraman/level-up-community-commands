@@ -44,7 +44,7 @@ jobs:
           cache: 'npm'
 
       - name: 📦 Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: 👨‍💼 Process maintainer override
         id: maintainer-override
@@ -71,7 +71,9 @@ jobs:
         if: steps.maintainer-override.outputs.has-permission == 'true'
         run: |
           echo "Processing maintainer override for issue #${{ github.event.issue.number }}"
-          node scripts/parse-collection-issue.js '${{ toJson(github.event.issue) }}' > issue-data.json
+          # Write the JSON to a temp file to avoid shell escaping issues
+          echo '${{ toJson(github.event.issue) }}' > temp-issue.json
+          node scripts/parse-collection-issue.js "$(cat temp-issue.json)" > issue-data.json
 
           # Set parsed data as output
           echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
@@ -79,6 +81,9 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
           echo "issue-parsed=true" >> $GITHUB_OUTPUT
+
+          # Clean up temp file
+          rm -f temp-issue.json
 
       - name: ✅ Validate GitHub username for override
         id: validate-override-username
@@ -229,7 +234,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: 📦 Install dependencies
@@ -245,12 +250,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual trigger detected, fetching issue #${{ github.event.inputs.issue_number }}"
-            ISSUE_DATA=$(gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }})
+            gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }} > temp-issue.json
             echo "Processing issue #${{ github.event.inputs.issue_number }}"
-            echo "$ISSUE_DATA" | node scripts/parse-collection-issue.js > issue-data.json
+            node scripts/parse-collection-issue.js "$(cat temp-issue.json)" > issue-data.json
           else
             echo "Processing issue #${{ github.event.issue.number }}"
-            node scripts/parse-collection-issue.js '${{ toJson(github.event.issue) }}' > issue-data.json
+            # Write the JSON to a temp file to avoid shell escaping issues
+            echo '${{ toJson(github.event.issue) }}' > temp-issue.json
+            node scripts/parse-collection-issue.js "$(cat temp-issue.json)" > issue-data.json
           fi
 
           # Set parsed data as output for other steps
@@ -259,6 +266,9 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
           echo "issue-parsed=true" >> $GITHUB_OUTPUT
+
+          # Clean up temp file
+          rm -f temp-issue.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
