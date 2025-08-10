@@ -336,25 +336,26 @@ jobs:
       - name: 📊 Process AI validation results
         id: process-ai-results
         run: |
-          # Extract results from AI inference action
-          AI_RESPONSE='${{ steps.ai-validation.outputs.response }}'
-          echo "Raw AI Response: $AI_RESPONSE"
+          # Extract results from AI inference action using a safer method
+          echo '${{ steps.ai-validation.outputs.response }}' > ai-response-raw.txt
+          echo "Raw AI Response saved to file"
 
           # Extract JSON from markdown code blocks if present
-          if echo "$AI_RESPONSE" | grep -q '```json'; then
+          if grep -q '```json' ai-response-raw.txt; then
             echo "Extracting JSON from markdown code blocks..."
-            AI_JSON=$(echo "$AI_RESPONSE" | sed -n '/```json/,/```/p' | sed '1d;$d')
+            sed -n '/```json/,/```/p' ai-response-raw.txt | sed '1d;$d' > ai-response-clean.json
           else
             echo "Using response as-is (no markdown blocks detected)..."
-            AI_JSON="$AI_RESPONSE"
+            cp ai-response-raw.txt ai-response-clean.json
           fi
 
-          echo "Extracted JSON: $AI_JSON"
+          echo "Extracted JSON:"
+          cat ai-response-clean.json
 
           # Parse the JSON response
-          AI_SCORE=$(echo "$AI_JSON" | jq -r '.safetyScore // 50')
-          RISK_LEVEL=$(echo "$AI_JSON" | jq -r '.riskLevel // "MEDIUM"')
-          AUTO_APPROVE=$(echo "$AI_JSON" | jq -r '.autoApprove // false')
+          AI_SCORE=$(jq -r '.safetyScore // 50' ai-response-clean.json)
+          RISK_LEVEL=$(jq -r '.riskLevel // "MEDIUM"' ai-response-clean.json)
+          AUTO_APPROVE=$(jq -r '.autoApprove // false' ai-response-clean.json)
 
           echo "AI Safety Score: $AI_SCORE"
           echo "Risk Level: $RISK_LEVEL"
@@ -370,7 +371,10 @@ jobs:
           fi
 
           # Store clean JSON for approval calculation
-          echo "$AI_JSON" > ai-safety-report.json
+          cp ai-response-clean.json ai-safety-report.json
+
+          # Clean up temp files
+          rm -f ai-response-raw.txt ai-response-clean.json
 
       - name: 📊 Calculate overall approval score
         id: approval-score
