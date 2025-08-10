@@ -218,7 +218,9 @@ jobs:
             gh workflow run deploy-pages.yml
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Regular automated processing job
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Regular automated processing job
   process-collection:
     if: |
       (contains(github.event.issue.labels.*.name, 'collection') &&
@@ -243,21 +245,30 @@ jobs:
       - name: 📦 Install dependencies
         run: npm ci
 
-      - name: Parse issue data
+      - name: 📄 Parse issue data
         id: parse-issue
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "Manual trigger detected, fetching issue #${{ github.event.inputs.issue_number }}"
+            ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
             gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }} > temp-issue.json
             echo "Processing issue #${{ github.event.inputs.issue_number }}"
           else
             echo "Processing issue #${{ github.event.issue.number }}"
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
             # Write the JSON to a temp file to avoid shell escaping issues
             echo '${{ toJson(github.event.issue) }}' > temp-issue.json
           fi
 
+          # Store issue number for use in other steps
+          echo "issue-number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+
           # Parse the issue data from the temp file using stdin
           cat temp-issue.json | node scripts/parse-collection-issue.js > issue-data.json
+
+          # Extract issue author for use in comments
+          ISSUE_AUTHOR=$(jq -r '.user.login // "unknown"' temp-issue.json)
+          echo "issue-author=$ISSUE_AUTHOR" >> $GITHUB_OUTPUT
 
           # Set parsed data as output for other steps
           echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
@@ -415,22 +426,28 @@ jobs:
           # Generate collection files
           node scripts/organize-collection.js issue-data.json "collections/$USERNAME" > organization-report.json
 
-          COLLECTION_PATH=$(node -e "const report = require('./organization-report.json'); console.log(report.collectionPath)")
-          echo "collection-path=$COLLECTION_PATH" >> $GITHUB_OUTPUT
+          # Extract collection information
+          COLLECTION_FILE=$(node -e "const report = require('./organization-report.json'); console.log(report.collectionFileName)")
+          COLLECTION_NAME=$(echo '${{ steps.parse-issue.outputs.parsed-data }}' | jq -r '.metadata.name')
+
+          # Set user-friendly collection path for display
+          echo "collection-path=collections/$USERNAME/collections/$COLLECTION_FILE" >> $GITHUB_OUTPUT
+          echo "collection-name=$COLLECTION_NAME" >> $GITHUB_OUTPUT
+          echo "collection-file=$COLLECTION_FILE" >> $GITHUB_OUTPUT
 
       - name: 🏷️ Update issue labels and status
         if: steps.approval-score.outputs.auto-approve == 'true'
         run: |
           # Add auto-checked label and remove new-submission
-          gh issue edit ${{ github.event.issue.number }} \
+          gh issue edit ${{ steps.parse-issue.outputs.issue-number }} \
             --add-label "auto-checked" \
             --remove-label "new-submission"
 
           # Add success comment
-          gh issue comment ${{ github.event.issue.number }} --body "$(cat <<EOF
+          gh issue comment ${{ steps.parse-issue.outputs.issue-number }} --body "$(cat <<EOF
           ## ✅ Collection Auto-Approved!
 
-          Hey @${{ github.event.issue.user.login }}! 👋
+          Hey @${{ steps.parse-issue.outputs.issue-author }}! 👋
 
           Your command collection has been automatically processed and approved! 🎉
 
@@ -438,7 +455,8 @@ jobs:
           - ✅ GitHub username validated: \`${{ steps.validate-username.outputs.github-username }}\`
           - ✅ AI Safety score: ${{ steps.process-ai-results.outputs.ai-score || 'N/A' }}/100
           - ✅ Overall approval score: ${{ steps.approval-score.outputs.overall-score }}/100
-          - ✅ Collection organized in: \`${{ steps.organize-collection.outputs.collection-path }}\`
+          - ✅ Collection "${{ steps.organize-collection.outputs.collection-name }}" organized successfully
+          - 📁 Collection file: \`${{ steps.organize-collection.outputs.collection-file }}\`
 
           **What's Next:**
           1. Your collection is now available in the community repository
@@ -455,15 +473,15 @@ jobs:
         if: steps.approval-score.outputs.auto-approve == 'false'
         run: |
           # Add needs-review label
-          gh issue edit ${{ github.event.issue.number }} --add-label "needs-review"
+          gh issue edit ${{ steps.parse-issue.outputs.issue-number }} --add-label "needs-review"
 
           # Add feedback comment
           FEEDBACK=$(node -e "const report = require('./approval-report.json'); console.log(report.feedback)")
 
-          gh issue comment ${{ github.event.issue.number }} --body "$(cat <<EOF
+          gh issue comment ${{ steps.parse-issue.outputs.issue-number }} --body "$(cat <<EOF
           ## ⚠️ Collection Needs Review
 
-          Hey @${{ github.event.issue.user.login }}! 👋
+          Hey @${{ steps.parse-issue.outputs.issue-author }}! 👋
 
           Your collection submission requires manual review before approval.
 
@@ -492,7 +510,7 @@ jobs:
           git config --local user.name "GitHub Action"
 
           git add collections/
-          git commit -m "🤖 Auto-add collection from @${{ steps.validate-username.outputs.github-username }} (Issue #${{ github.event.issue.number }})"
+          git commit -m "🤖 Auto-add collection from @${{ steps.validate-username.outputs.github-username }} (Issue #${{ steps.parse-issue.outputs.issue-number }})"
           git push
 
           # Trigger GitHub Pages deployment
@@ -511,7 +529,7 @@ jobs:
       - name: ✅ Close issue if auto-approved
         if: steps.approval-score.outputs.auto-approve == 'true'
         run: |
-          gh issue close ${{ github.event.issue.number }} --comment "Hey @${{ github.event.issue.user.login }}! Your collection has been successfully processed and added to the community repository. Thank you for your contribution! 🎉"
+          gh issue close ${{ steps.parse-issue.outputs.issue-number }} --comment "Hey @${{ github.event.issue.user.login }}! Your collection has been successfully processed and added to the community repository. Thank you for your contribution! 🎉"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -522,10 +540,20 @@ jobs:
     steps:
       - name: 🚨 Handle processing error
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "$(cat <<EOF
+          # Determine issue number and author based on trigger type
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
+            # For workflow_dispatch, we need to fetch the issue to get the author
+            ISSUE_AUTHOR=$(gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }} | jq -r '.user.login // "unknown"')
+          else
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+            ISSUE_AUTHOR="${{ github.event.issue.user.login }}"
+          fi
+
+          gh issue comment $ISSUE_NUMBER --body "$(cat <<EOF
           ## ❌ Processing Error
 
-          Hey @${{ github.event.issue.user.login }}! 👋
+          Hey @$ISSUE_AUTHOR! 👋
 
           There was an error processing your collection submission.
 
