@@ -364,10 +364,13 @@ jobs:
           echo "ai-score=$AI_SCORE" >> $GITHUB_OUTPUT
           echo "risk-level=$RISK_LEVEL" >> $GITHUB_OUTPUT
 
-          if [ "$AUTO_APPROVE" = "true" ] && [ "$AI_SCORE" -ge "75" ]; then
+          # Auto-approve based on score and risk level (more flexible logic)
+          if [ "$AI_SCORE" -ge "75" ] && [ "$RISK_LEVEL" != "HIGH" ] && [ "$RISK_LEVEL" != "CRITICAL" ]; then
             echo "ai-passed=true" >> $GITHUB_OUTPUT
+            echo "✅ AI validation passed: Score $AI_SCORE with $RISK_LEVEL risk"
           else
             echo "ai-passed=false" >> $GITHUB_OUTPUT
+            echo "⚠️ AI validation requires review: Score $AI_SCORE with $RISK_LEVEL risk"
           fi
 
           # Store clean JSON for approval calculation
@@ -391,10 +394,10 @@ jobs:
           # Use AI score directly as overall score (simplified approach)
           OVERALL_SCORE=$AI_SCORE
 
-          # Auto-approve if AI passed and score >= 75
-          if [ "$AI_PASSED" = "true" ] && [ "$AI_SCORE" -ge "75" ]; then
+          # Auto-approve if AI passed (score >= 75 and risk not HIGH/CRITICAL)
+          if [ "$AI_PASSED" = "true" ]; then
             AUTO_APPROVE="true"
-            echo "✅ APPROVED: Collection passes AI validation (Score: $OVERALL_SCORE)"
+            echo "✅ APPROVED: Collection passes AI validation (Score: $OVERALL_SCORE, Risk: $RISK_LEVEL)"
           else
             AUTO_APPROVE="false"
             echo "⚠️ NEEDS REVIEW: Collection requires manual review (Score: $OVERALL_SCORE, Risk: $RISK_LEVEL)"
