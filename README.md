@@ -55,7 +55,6 @@ All community commands go through a review process to ensure:
 - [Contributing Guidelines](docs/CONTRIBUTING.md)
 - [Command Development Guide](docs/COMMAND_DEVELOPMENT.md)
 - [Security Guidelines](docs/SECURITY.md)
-- [API Reference](docs/API_REFERENCE.md)
 
 ## 🤝 Contributing
 
@@ -84,7 +83,4 @@ Check out some of our most popular community commands:
 
 ---
 
-**Made with ❤️ by the Dynamics 365 community**
-
-_Level Up for Dynamics 365 - Supercharge your productivity!_
 
