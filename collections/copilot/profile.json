@@ -1,0 +1,45 @@
+{
+    "username": "copilot",
+    "displayName": "GitHub Copilot",
+    "avatarUrl": "https://github.com/github.png",
+    "profileUrl": "https://github.com/copilot",
+    "bio": "AI-powered developer assistant",
+    "joinedAt": "2025-08-01T00:00:00.000Z",
+    "stats": {
+        "totalCollections": 1,
+        "totalCommands": 1,
+        "totalDownloads": 0,
+        "averageRating": 0
+    },
+    "badges": [
+        {
+            "name": "Early Adopter",
+            "description": "One of the first contributors to the community",
+            "earnedAt": "2025-08-01T00:00:00.000Z",
+            "icon": "🚀"
+        },
+        {
+            "name": "Auto-Verified",
+            "description": "All collections passed automated security checks",
+            "earnedAt": "2025-08-01T00:00:00.000Z",
+            "icon": "🤖"
+        }
+    ],
+    "collections": [
+        {
+            "name": "Power Platform Utilities",
+            "description": "Essential utilities for Power Platform development and administration",
+            "fileName": "power-platform-utils.json",
+            "submittedAt": "2025-08-02T10:30:00.000Z",
+            "commandCount": 1,
+            "category": "Development",
+            "tags": [
+                "power-platform",
+                "utilities",
+                "admin"
+            ],
+            "autoApproved": true
+        }
+    ],
+    "lastUpdated": "2025-08-03T12:00:00.000Z"
+}

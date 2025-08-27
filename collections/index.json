@@ -1,0 +1,42 @@
+{
+  "generatedAt": "2025-08-10T23:57:57.846Z",
+  "totalUsers": 1,
+  "totalCollections": 1,
+  "totalCommands": 1,
+  "users": [
+    {
+      "username": "copilot",
+      "displayName": "GitHub Copilot",
+      "totalCollections": 1,
+      "totalCommands": 1,
+      "badges": 2,
+      "joinedAt": "2025-08-01T00:00:00.000Z"
+    }
+  ],
+  "recentCollections": [
+    {
+      "name": "Power Platform Utilities",
+      "description": "Essential utilities for Power Platform development and administration",
+      "fileName": "power-platform-utils.json",
+      "submittedAt": "2025-08-02T10:30:00.000Z",
+      "commandCount": 1,
+      "category": "Development",
+      "tags": [
+        "power-platform",
+        "utilities",
+        "admin"
+      ],
+      "autoApproved": true,
+      "username": "copilot",
+      "displayName": "GitHub Copilot"
+    }
+  ],
+  "categories": {
+    "Development": 1
+  },
+  "tags": {
+    "power-platform": 1,
+    "utilities": 1,
+    "admin": 1
+  }
+}

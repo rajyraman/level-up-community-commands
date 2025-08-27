@@ -1,0 +1,64 @@
+{
+    "name": "level-up-community-commands",
+    "version": "1.0.0",
+    "description": "Community repository for Level Up for Dynamics 365 custom commands",
+    "main": "index.js",
+    "scripts": {
+        "parse-collection": "node scripts/parse-collection-issue.js",
+        "organize-collection": "node scripts/organize-collection.js",
+        "update-index": "node -e \"const CollectionOrganizer = require('./scripts/organize-collection.js'); new CollectionOrganizer().updateCollectionsIndex('./collections');\"",
+        "lint": "eslint . --ext .js",
+        "lint:fix": "eslint . --ext .js --fix",
+        "format": "prettier --write \"**/*.{js,json,md,yml}\"",
+        "format:check": "prettier --check \"**/*.{js,json,md,yml}\"",
+        "test": "npm run lint && npm run format:check",
+        "test:collections": "npm run validate-collections && npm run update-index",
+        "validate-collections": "find collections -name '*.json' -path '*/collections/*' -exec node -e \"try { JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); console.log('✅', process.argv[1]); } catch(e) { console.error('❌', process.argv[1], e.message); process.exit(1); }\" {} \\;",
+        "clean": "rm -rf dist/ temp/ *.log",
+        "build:site": "npm run update-index && echo 'GitHub Pages site ready'",
+        "dev:serve": "python -m http.server 8000",
+        "dev:test-workflow": "echo 'Testing collection processing workflow...' && node scripts/parse-collection-issue.js '{\"number\":123,\"title\":\"[COLLECTION] Test Collection\",\"body\":\"### collection-name\\nTest Collection\\n### description\\nA test collection\\n### category\\nForm Actions\\n### commands-json\\n{\\\"commands\\\":[{\\\"name\\\":\\\"Test Command\\\",\\\"code\\\":\\\"console.log(\\\\\\\"test\\\\\\\");\\\"}]}\\n### contact-info\\ntestuser\",\"user\":{\"login\":\"testuser\"},\"created_at\":\"2025-08-03T12:00:00Z\",\"html_url\":\"https://github.com/test/test/issues/123\"}' | jq ."
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/rajyraman/level-up-community-commands.git"
+    },
+    "keywords": [
+        "dynamics365",
+        "powerplatform",
+        "javascript",
+        "automation",
+        "productivity",
+        "browser-extension",
+        "community",
+        "commands",
+        "level-up"
+    ],
+    "author": "Level Up Community",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/rajyraman/level-up-community-commands/issues"
+    },
+    "homepage": "https://github.com/rajyraman/level-up-community-commands#readme",
+    "devDependencies": {
+        "eslint": "^8.0.0",
+        "prettier": "^2.0.0"
+    },
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "files": [
+        "collections/",
+        "docs/",
+        "scripts/",
+        "README.md",
+        "LICENSE"
+    ],
+    "directories": {
+        "doc": "docs"
+    },
+    "funding": {
+        "type": "github",
+        "url": "https://github.com/sponsors/rajyraman"
+    }
+}

@@ -1,0 +1,132 @@
+name: 📄 Deploy GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'collections/**'
+      - 'docs/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: 📊 Generate site statistics
+        run: |
+          # Ensure collections directory exists
+          mkdir -p collections
+
+          # Generate or update the collections index
+          if [ -f "scripts/organize-collection.js" ]; then
+            node -e "
+              const CollectionOrganizer = require('./scripts/organize-collection.js');
+              const organizer = new CollectionOrganizer();
+              organizer.updateCollectionsIndex('./collections');
+              console.log('✅ Collections index updated');
+            " || echo "⚠️ Failed to update collections index, using existing"
+          fi
+
+      - name: 📦 Prepare GitHub Pages content
+        run: |
+          # Create _site directory for GitHub Pages
+          mkdir -p _site
+
+          # Copy docs content to _site
+          cp -r docs/* _site/
+
+          # Copy collections to _site
+          if [ -d "collections" ]; then
+            cp -r collections _site/
+          else
+            mkdir -p _site/collections
+            echo '{"totalUsers": 0, "totalCollections": 0, "totalCommands": 0, "users": [], "recentCollections": [], "categories": {}, "tags": {}, "generatedAt": "'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'"}' > _site/collections/index.json
+          fi
+
+          # Create .nojekyll to ensure GitHub Pages serves all files
+          touch _site/.nojekyll
+
+          # Create a robots.txt
+          cat > _site/robots.txt << EOF
+          User-agent: *
+          Allow: /
+
+          Sitemap: https://rajyraman.github.io/level-up-community-commands/sitemap.xml
+          EOF
+
+          # Generate a basic sitemap
+          cat > _site/sitemap.xml << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+            <url>
+              <loc>https://rajyraman.github.io/level-up-community-commands/</loc>
+              <lastmod>$(date -u +%Y-%m-%d)</lastmod>
+              <changefreq>daily</changefreq>
+              <priority>1.0</priority>
+            </url>
+          </urlset>
+          EOF
+
+      - name: 🔍 Validate site structure
+        run: |
+          echo "📁 Site structure:"
+          find _site -type f -name "*.html" -o -name "*.json" -o -name "*.js" -o -name "*.css" | head -20
+
+          echo ""
+          echo "📊 Collections summary:"
+          if [ -f "_site/collections/index.json" ]; then
+            node -e "
+              const fs = require('fs');
+              try {
+                const index = JSON.parse(fs.readFileSync('_site/collections/index.json', 'utf8'));
+                console.log('Total Collections:', index.totalCollections);
+                console.log('Total Commands:', index.totalCommands);
+                console.log('Total Users:', index.totalUsers);
+                console.log('Recent Collections:', index.recentCollections.length);
+              } catch (error) {
+                console.log('Could not read collections index:', error.message);
+              }
+            "
+          else
+            echo "No collections index found"
+          fi
+
+      - name: ⚙️ Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './_site'
+
+      - name: 🚀 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: ✅ Deployment complete
+        run: |
+          echo "🎉 GitHub Pages deployed successfully!"
+          echo "🔗 Site URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "📊 Collections available at: ${{ steps.deployment.outputs.page_url }}collections/"

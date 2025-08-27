@@ -1,0 +1,581 @@
+name: 🤖 Process Collection Submission
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to process'
+        required: true
+        type: number
+      force_process:
+        description: 'Force processing even if already processed'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+  contents: write
+  pages: write
+  id-token: write
+  models: read
+
+jobs:
+  # Maintainer override job - runs when maintainer adds approval labels
+  maintainer-override:
+    if: |
+      ((contains(github.event.issue.labels.*.name, 'maintainer-approved') ||
+        contains(github.event.issue.labels.*.name, 'force-approve')) &&
+       contains(github.event.issue.labels.*.name, 'collection')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.force_process == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 👨‍💼 Process maintainer override
+        id: maintainer-override
+        run: |
+          echo "🔑 Maintainer override detected for issue #${{ github.event.issue.number }}"
+          echo "👤 Triggered by: ${{ github.event.sender.login }}"
+
+          # Check if user has maintainer permissions
+          USER_PERMISSION=$(gh api repos/${{ github.repository }}/collaborators/${{ github.event.sender.login }}/permission --jq '.permission')
+
+          if [[ "$USER_PERMISSION" == "admin" || "$USER_PERMISSION" == "write" ]]; then
+            echo "✅ User ${{ github.event.sender.login }} has maintainer permissions ($USER_PERMISSION)"
+            echo "has-permission=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ User ${{ github.event.sender.login }} does not have maintainer permissions ($USER_PERMISSION)"
+            echo "has-permission=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Parse issue data for override
+        id: parse-override
+        if: steps.maintainer-override.outputs.has-permission == 'true'
+        run: |
+          echo "Processing maintainer override for issue #${{ github.event.issue.number }}"
+          # Write the JSON to a temp file to avoid shell escaping issues
+          echo '${{ toJson(github.event.issue) }}' > temp-issue.json
+
+          # Parse the issue data from the temp file using stdin
+          cat temp-issue.json | node scripts/parse-collection-issue.js > issue-data.json
+
+          # Set parsed data as output
+          echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
+          cat issue-data.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "issue-parsed=true" >> $GITHUB_OUTPUT
+
+          # Clean up temp file
+          rm -f temp-issue.json
+
+      - name: ✅ Validate GitHub username for override
+        id: validate-override-username
+        if: steps.maintainer-override.outputs.has-permission == 'true'
+        run: |
+          USERNAME=$(echo '${{ steps.parse-override.outputs.parsed-data }}' | jq -r '.contactInfo // empty')
+          if [ -z "$USERNAME" ]; then
+            echo "❌ No GitHub username provided"
+            echo "valid-username=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          # Check if GitHub user exists
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/users/$USERNAME")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Valid GitHub username: $USERNAME"
+            echo "valid-username=true" >> $GITHUB_OUTPUT
+            echo "github-username=$USERNAME" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Invalid GitHub username: $USERNAME"
+            echo "valid-username=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: 📁 Process maintainer-approved collection
+        id: process-override
+        if: steps.maintainer-override.outputs.has-permission == 'true'
+        run: |
+          USERNAME=${{ steps.validate-override-username.outputs.github-username }}
+
+          # Create override approval report
+          cat > override-approval-report.json << EOF
+          {
+            "overallScore": 100,
+            "autoApprove": true,
+            "recommendation": "MAINTAINER_OVERRIDE",
+            "feedback": "Collection manually approved by maintainer ${{ github.event.sender.login }}",
+            "scores": {
+              "validation": 100,
+              "security": 100,
+              "aiSafety": 100
+            },
+            "details": {
+              "issues": [],
+              "warnings": [],
+              "recommendations": [
+                {
+                  "priority": "INFO",
+                  "action": "Manual approval by maintainer",
+                  "description": "Collection approved by ${{ github.event.sender.login }} with maintainer override"
+                }
+              ]
+            },
+            "maintainerOverride": {
+              "approved": true,
+              "approvedBy": "${{ github.event.sender.login }}",
+              "approvedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "reason": "Maintainer manual approval",
+              "label": "${{ contains(github.event.issue.labels.*.name, 'force-approve') && 'force-approve' || 'maintainer-approved' }}"
+            },
+            "processedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          # Organize collection with maintainer approval
+          mkdir -p "collections/$USERNAME"
+          node scripts/organize-collection.js issue-data.json "collections/$USERNAME" > organization-report.json
+
+          echo "collection-organized=true" >> $GITHUB_OUTPUT
+          echo "maintainer-approved=true" >> $GITHUB_OUTPUT
+
+      - name: 🏷️ Update issue labels for override
+        if: steps.maintainer-override.outputs.has-permission == 'true'
+        run: |
+          # Add approved label and remove pending labels
+          gh issue edit ${{ github.event.issue.number }} \
+            --add-label "auto-approved,processed" \
+            --remove-label "pending-review,needs-review"
+
+          # Add maintainer approval comment
+          cat > approval-comment.md << EOF
+          ## ✅ Collection Manually Approved by Maintainer
+
+          Hey @${{ github.event.issue.user.login }}! 👋
+
+          **Approved by:** @${{ github.event.sender.login }}
+          **Approval Method:** Maintainer Override
+          **Processed at:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          ### 🎉 Your collection has been approved!
+
+          Your collection is now available at:
+          - **Collection URL:** https://rajyraman.github.io/level-up-community-commands/
+          - **User Profile:** https://rajyraman.github.io/level-up-community-commands/#user/${{ steps.validate-override-username.outputs.github-username }}
+
+          ### 📋 Next Steps
+          1. Browse your collection on the community website
+          2. Share the collection URL with others
+          3. Consider submitting more collections!
+
+          ---
+          *This collection was manually approved by a maintainer and bypassed automated security analysis.*
+          EOF
+
+          gh issue comment ${{ github.event.issue.number }} --body-file approval-comment.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🚀 Deploy updated collections to GitHub Pages
+        if: steps.maintainer-override.outputs.has-permission == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          git add collections/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🔑 Maintainer override: Add collection from issue #${{ github.event.issue.number }}
+
+            - Approved by: ${{ github.event.sender.login }}
+            - Method: Maintainer override
+            - User: ${{ steps.validate-override-username.outputs.github-username }}
+            - Issue: https://github.com/${{ github.repository }}/issues/${{ github.event.issue.number }}"
+
+            git push
+
+            # Trigger GitHub Pages deployment
+            gh workflow run deploy-pages.yml
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Regular automated processing job
+  process-collection:
+    if: |
+      (contains(github.event.issue.labels.*.name, 'collection') &&
+       contains(github.event.issue.labels.*.name, 'new-submission') &&
+       !contains(github.event.issue.labels.*.name, 'maintainer-approved') &&
+       !contains(github.event.issue.labels.*.name, 'force-approve')) ||
+      (github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 📄 Parse issue data
+        id: parse-issue
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger detected, fetching issue #${{ github.event.inputs.issue_number }}"
+            ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
+            gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }} > temp-issue.json
+            echo "Processing issue #${{ github.event.inputs.issue_number }}"
+          else
+            echo "Processing issue #${{ github.event.issue.number }}"
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+            # Write the JSON to a temp file to avoid shell escaping issues
+            echo '${{ toJson(github.event.issue) }}' > temp-issue.json
+          fi
+
+          # Store issue number for use in other steps
+          echo "issue-number=$ISSUE_NUMBER" >> $GITHUB_OUTPUT
+
+          # Parse the issue data from the temp file using stdin
+          cat temp-issue.json | node scripts/parse-collection-issue.js > issue-data.json
+
+          # Extract issue author for use in comments
+          ISSUE_AUTHOR=$(jq -r '.user.login // "unknown"' temp-issue.json)
+          echo "issue-author=$ISSUE_AUTHOR" >> $GITHUB_OUTPUT
+
+          # Set parsed data as output for other steps
+          echo "parsed-data<<EOF" >> $GITHUB_OUTPUT
+          cat issue-data.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "issue-parsed=true" >> $GITHUB_OUTPUT
+
+          # Clean up temp file
+          rm -f temp-issue.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ Validate GitHub username
+        id: validate-username
+        run: |
+          USERNAME=$(echo '${{ steps.parse-issue.outputs.parsed-data }}' | jq -r '.contactInfo // empty')
+          if [ -z "$USERNAME" ]; then
+            echo "❌ No GitHub username provided"
+            echo "valid-username=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          # Check if GitHub user exists
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://api.github.com/users/$USERNAME")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Valid GitHub username: $USERNAME"
+            echo "valid-username=true" >> $GITHUB_OUTPUT
+            echo "github-username=$USERNAME" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Invalid GitHub username: $USERNAME"
+            echo "valid-username=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: 🤖 AI safety validation with GitHub Models
+        id: ai-validation
+        uses: actions/ai-inference@v1
+        with:
+          model: openai/gpt-4o
+          system-prompt: |
+            You are a cybersecurity expert specializing in JavaScript code analysis for Microsoft Dynamics 365 applications.
+            Analyze the provided JavaScript code for security vulnerabilities and safety issues.
+
+            Return a JSON object with the following structure:
+            {
+              "safetyScore": <number 0-100>,
+              "riskLevel": "<LOW|MEDIUM|HIGH|CRITICAL>",
+              "autoApprove": <boolean>,
+              "summary": "<brief summary of findings>",
+              "issues": [{"severity": "<LOW|MEDIUM|HIGH|CRITICAL>", "description": "<issue description>"}]
+            }
+
+            Rate 90-100 for very safe code, 70-89 for generally safe, 50-69 for some concerns, 30-49 for significant issues, 0-29 for dangerous code.
+            Set autoApprove to true only if safetyScore >= 75 and no HIGH or CRITICAL issues found.
+          prompt: |
+            Analyze this Dynamics 365 JavaScript command for security vulnerabilities:
+
+            Command Name: ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].name }}
+            Command Category: ${{ fromJson(steps.parse-issue.outputs.parsed-data).metadata.category }}
+
+            JavaScript Code:
+            ${{ fromJson(steps.parse-issue.outputs.parsed-data).commands[0].code }}
+
+      - name: 📊 Process AI validation results
+        id: process-ai-results
+        run: |
+          # Extract results from AI inference action using a safer method
+          echo '${{ steps.ai-validation.outputs.response }}' > ai-response-raw.txt
+          echo "Raw AI Response saved to file"
+
+          # Extract JSON from markdown code blocks if present
+          if grep -q '```json' ai-response-raw.txt; then
+            echo "Extracting JSON from markdown code blocks..."
+            sed -n '/```json/,/```/p' ai-response-raw.txt | sed '1d;$d' > ai-response-clean.json
+          else
+            echo "Using response as-is (no markdown blocks detected)..."
+            cp ai-response-raw.txt ai-response-clean.json
+          fi
+
+          echo "Extracted JSON:"
+          cat ai-response-clean.json
+
+          # Parse the JSON response
+          AI_SCORE=$(jq -r '.safetyScore // 50' ai-response-clean.json)
+          RISK_LEVEL=$(jq -r '.riskLevel // "MEDIUM"' ai-response-clean.json)
+          AUTO_APPROVE=$(jq -r '.autoApprove // false' ai-response-clean.json)
+
+          echo "AI Safety Score: $AI_SCORE"
+          echo "Risk Level: $RISK_LEVEL"
+          echo "Auto Approve: $AUTO_APPROVE"
+
+          echo "ai-score=$AI_SCORE" >> $GITHUB_OUTPUT
+          echo "risk-level=$RISK_LEVEL" >> $GITHUB_OUTPUT
+
+          # Auto-approve based on score and risk level (more flexible logic)
+          if [ "$AI_SCORE" -ge "75" ] && [ "$RISK_LEVEL" != "HIGH" ] && [ "$RISK_LEVEL" != "CRITICAL" ]; then
+            echo "ai-passed=true" >> $GITHUB_OUTPUT
+            echo "✅ AI validation passed: Score $AI_SCORE with $RISK_LEVEL risk"
+          else
+            echo "ai-passed=false" >> $GITHUB_OUTPUT
+            echo "⚠️ AI validation requires review: Score $AI_SCORE with $RISK_LEVEL risk"
+          fi
+
+          # Store clean JSON for approval calculation
+          cp ai-response-clean.json ai-safety-report.json
+
+          # Clean up temp files
+          rm -f ai-response-raw.txt ai-response-clean.json
+
+      - name: 📊 Calculate overall approval score
+        id: approval-score
+        run: |
+          # Get AI results
+          AI_SCORE=${{ steps.process-ai-results.outputs.ai-score }}
+          AI_PASSED=${{ steps.process-ai-results.outputs.ai-passed }}
+          RISK_LEVEL=${{ steps.process-ai-results.outputs.risk-level }}
+
+          echo "AI Safety Score: $AI_SCORE"
+          echo "AI Validation Passed: $AI_PASSED"
+          echo "Risk Level: $RISK_LEVEL"
+
+          # Use AI score directly as overall score (simplified approach)
+          OVERALL_SCORE=$AI_SCORE
+
+          # Auto-approve if AI passed (score >= 75 and risk not HIGH/CRITICAL)
+          if [ "$AI_PASSED" = "true" ]; then
+            AUTO_APPROVE="true"
+            echo "✅ APPROVED: Collection passes AI validation (Score: $OVERALL_SCORE, Risk: $RISK_LEVEL)"
+          else
+            AUTO_APPROVE="false"
+            echo "⚠️ NEEDS REVIEW: Collection requires manual review (Score: $OVERALL_SCORE, Risk: $RISK_LEVEL)"
+          fi
+
+          # Create approval report for consistency
+          cat > approval-report.json << EOF
+          {
+            "overallScore": $OVERALL_SCORE,
+            "autoApprove": $AUTO_APPROVE,
+            "recommendation": "$([ "$AUTO_APPROVE" = "true" ] && echo "APPROVE" || echo "MANUAL_REVIEW")",
+            "feedback": "$([ "$AUTO_APPROVE" = "true" ] && echo "Collection passed AI safety validation" || echo "Collection requires manual review due to AI safety concerns (Risk: $RISK_LEVEL)")",
+            "scores": {
+              "aiSafety": $AI_SCORE,
+              "riskLevel": "$RISK_LEVEL"
+            },
+            "processedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+          echo "overall-score=$OVERALL_SCORE" >> $GITHUB_OUTPUT
+          echo "auto-approve=$AUTO_APPROVE" >> $GITHUB_OUTPUT
+
+      - name: 📁 Organize auto-approved collection
+        id: organize-collection
+        if: steps.approval-score.outputs.auto-approve == 'true'
+        run: |
+          USERNAME=${{ steps.validate-username.outputs.github-username }}
+
+          # Create user directory if it doesn't exist
+          mkdir -p "collections/$USERNAME"
+
+          # Generate collection files
+          node scripts/organize-collection.js issue-data.json "collections/$USERNAME" > organization-report.json
+
+          # Extract collection information
+          COLLECTION_FILE=$(node -e "const report = require('./organization-report.json'); console.log(report.collectionFileName)")
+          COLLECTION_NAME=$(echo '${{ steps.parse-issue.outputs.parsed-data }}' | jq -r '.metadata.name')
+
+          # Set user-friendly collection path for display
+          echo "collection-path=collections/$USERNAME/collections/$COLLECTION_FILE" >> $GITHUB_OUTPUT
+          echo "collection-name=$COLLECTION_NAME" >> $GITHUB_OUTPUT
+          echo "collection-file=$COLLECTION_FILE" >> $GITHUB_OUTPUT
+
+      - name: 🏷️ Update issue labels and status
+        if: steps.approval-score.outputs.auto-approve == 'true'
+        run: |
+          # Add auto-checked label and remove new-submission
+          gh issue edit ${{ steps.parse-issue.outputs.issue-number }} \
+            --add-label "auto-checked" \
+            --remove-label "new-submission"
+
+          # Add success comment
+          gh issue comment ${{ steps.parse-issue.outputs.issue-number }} --body "$(cat <<EOF
+          ## ✅ Collection Auto-Approved!
+
+          Hey @${{ steps.parse-issue.outputs.issue-author }}! 👋
+
+          Your command collection has been automatically processed and approved! 🎉
+
+          **Processing Results:**
+          - ✅ GitHub username validated: \`${{ steps.validate-username.outputs.github-username }}\`
+          - ✅ AI Safety score: ${{ steps.process-ai-results.outputs.ai-score || 'N/A' }}/100
+          - ✅ Overall approval score: ${{ steps.approval-score.outputs.overall-score }}/100
+          - ✅ Collection "${{ steps.organize-collection.outputs.collection-name }}" organized successfully
+          - 📁 Collection file: \`${{ steps.organize-collection.outputs.collection-file }}\`
+
+          **What's Next:**
+          1. Your collection is now available in the community repository
+          2. It will be published to GitHub Pages within 5-10 minutes
+          3. You can view and share your collection at: https://rajyraman.github.io/level-up-community-commands/collections/${{ steps.validate-username.outputs.github-username }}
+
+          Thank you for contributing to the Level Up community! 🙏
+          EOF
+          )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ❌ Handle failed validation
+        if: steps.approval-score.outputs.auto-approve == 'false'
+        run: |
+          # Add needs-review label
+          gh issue edit ${{ steps.parse-issue.outputs.issue-number }} --add-label "needs-review"
+
+          # Add feedback comment
+          FEEDBACK=$(node -e "const report = require('./approval-report.json'); console.log(report.feedback)")
+
+          gh issue comment ${{ steps.parse-issue.outputs.issue-number }} --body "$(cat <<EOF
+          ## ⚠️ Collection Needs Review
+
+          Hey @${{ steps.parse-issue.outputs.issue-author }}! 👋
+
+          Your collection submission requires manual review before approval.
+
+          **Issues Found:**
+          $FEEDBACK
+
+          **Scores:**
+          - AI Safety Score: ${{ steps.process-ai-results.outputs.ai-score || 'N/A' }}/100
+          - Overall Score: ${{ steps.approval-score.outputs.overall-score }}/100
+
+          **Next Steps:**
+          1. A maintainer will review your submission manually
+          2. You may be asked to make changes to address the identified issues
+          3. Once approved, your collection will be processed automatically
+
+          Thank you for your patience! 🙏
+          EOF
+          )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Commit and push changes
+        if: steps.approval-score.outputs.auto-approve == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          git add collections/
+          git commit -m "🤖 Auto-add collection from @${{ steps.validate-username.outputs.github-username }} (Issue #${{ steps.parse-issue.outputs.issue-number }})"
+          git push
+
+          # Trigger GitHub Pages deployment
+          gh workflow run deploy-pages.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔄 Trigger GitHub Pages rebuild
+        if: steps.approval-score.outputs.auto-approve == 'true'
+        run: |
+          # Trigger pages deployment workflow
+          gh workflow run deploy-pages.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ Close issue if auto-approved
+        if: steps.approval-score.outputs.auto-approve == 'true'
+        run: |
+          gh issue close ${{ steps.parse-issue.outputs.issue-number }} --comment "Hey @${{ github.event.issue.user.login }}! Your collection has been successfully processed and added to the community repository. Thank you for your contribution! 🎉"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  error-handler:
+    if: failure()
+    needs: process-collection
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚨 Handle processing error
+        run: |
+          # Determine issue number and author based on trigger type
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ISSUE_NUMBER="${{ github.event.inputs.issue_number }}"
+            # For workflow_dispatch, we need to fetch the issue to get the author
+            ISSUE_AUTHOR=$(gh api repos/${{ github.repository }}/issues/${{ github.event.inputs.issue_number }} | jq -r '.user.login // "unknown"')
+          else
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+            ISSUE_AUTHOR="${{ github.event.issue.user.login }}"
+          fi
+
+          gh issue comment $ISSUE_NUMBER --body "$(cat <<EOF
+          ## ❌ Processing Error
+
+          Hey @$ISSUE_AUTHOR! 👋
+
+          There was an error processing your collection submission.
+
+          **Error Details:**
+          - Workflow failed during processing
+          - Please check that your submission follows the required format
+          - A maintainer will review this issue manually
+
+          **Next Steps:**
+          1. Verify your JSON format is valid
+          2. Ensure all required fields are filled
+          3. Wait for manual review by a maintainer
+
+          We apologize for the inconvenience! 🙏
+          EOF
+          )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

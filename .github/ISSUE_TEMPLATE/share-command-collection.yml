@@ -1,0 +1,152 @@
+name: 📦 Share Command Collection
+description: Share a collection of related custom commands
+title: '[COLLECTION] '
+labels: ['community-command', 'collection', 'new-submission']
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing a command collection with the Level Up community! 🎉
+
+        Collections are groups of related commands that work together to solve specific business scenarios.
+
+        **Before submitting:**
+        - ✅ Test all commands thoroughly in your environment
+        - ✅ Remove any sensitive data from all commands
+        - ✅ Ensure commands work well together
+        - ✅ Add clear documentation for the collection
+
+  - type: input
+    id: collection-name
+    attributes:
+      label: Collection Name
+      description: A descriptive name for your command collection
+      placeholder: 'e.g., Lead Management Suite, Report Generation Tools, Data Migration Kit'
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Collection Description
+      description: What does this collection accomplish? What business scenario does it address?
+      placeholder: 'Describe the overall purpose, workflow, and benefits of using these commands together...'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Primary Category
+      description: Which category best fits this collection?
+      options:
+        - Form Actions
+        - Navigation
+        - Data Management
+        - UI Enhancement
+        - Development Tools
+        - Workflow Automation
+        - Reporting & Analytics
+        - User Management
+        - Business Process
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: tags
+    attributes:
+      label: Tags
+      description: Add relevant tags separated by commas
+      placeholder: 'e.g., workflow, automation, reporting, data-migration'
+
+  - type: textarea
+    id: commands-json
+    attributes:
+      label: Commands JSON Export
+      description: Paste the exported JSON from Level Up (multiple commands)
+      placeholder: |
+        {
+          "version": "1.0.0",
+          "exportedAt": 1234567890,
+          "commands": [
+            {
+              "name": "Command 1",
+              "description": "Description of command 1",
+              "code": "// JavaScript code for command 1",
+              "icon": "icon_name"
+            },
+            {
+              "name": "Command 2",
+              "description": "Description of command 2",
+              "code": "// JavaScript code for command 2",
+              "icon": "icon_name"
+            }
+          ]
+        }
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: command-count
+    attributes:
+      label: Number of Commands
+      description: How many commands are in this collection?
+      placeholder: 'e.g., 5'
+    validations:
+      required: true
+
+  - type: input
+    id: dynamics-version
+    attributes:
+      label: Dynamics 365 Version
+      description: Which version(s) of Dynamics 365 have you tested this collection with?
+      placeholder: 'e.g., Dynamics 365 Online, Power Platform, Version 9.2+'
+
+  - type: checkboxes
+    id: safety-checklist
+    attributes:
+      label: Safety & Quality Checklist
+      description: Please confirm all items before submitting
+      options:
+        - label: All commands have been tested and work correctly together
+          required: true
+        - label: No commands contain sensitive data (URLs, passwords, personal info)
+          required: true
+        - label: All code follows JavaScript best practices with helpful comments
+          required: true
+        - label: Destructive operations have appropriate user confirmations
+          required: true
+        - label: I understand this will be shared publicly under the MIT license
+          required: true
+
+  - type: input
+    id: author-attribution
+    attributes:
+      label: Author Attribution (Optional)
+      description: How would you like to be credited?
+      placeholder: 'Your name, GitHub username, or organization'
+
+  - type: input
+    id: contact-info
+    attributes:
+      label: GitHub Username (Required)
+      description: Your GitHub username for organizing the collection in the repository. Must be a valid GitHub username.
+      placeholder: 'your-github-username'
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+
+        ### What happens next?
+
+        1. **Review**: Your collection will be reviewed for safety and quality
+        2. **Testing**: The commands may be tested in different environments
+        3. **Integration**: Approved collections will be tagged and made available for import
+
+        Thank you for contributing to the Level Up community! 🙏

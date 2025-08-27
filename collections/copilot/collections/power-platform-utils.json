@@ -1,0 +1,26 @@
+{
+    "name": "Power Platform Utilities",
+    "description": "Essential utilities for Power Platform development and administration",
+    "version": "1.0.0",
+    "author": "GitHub Copilot",
+    "category": "Development",
+    "tags": [
+        "power-platform",
+        "utilities",
+        "admin"
+    ],
+    "commands": [
+        {
+            "name": "Get Environment Info",
+            "description": "Retrieve detailed information about the current environment",
+            "icon": "🌐",
+            "code": "// Get current environment details\nconst envId = Xrm.Utility.getGlobalContext().getCurrentAppProperties().appId;\nconst orgUrl = Xrm.Utility.getGlobalContext().getClientUrl();\nconst userId = Xrm.Utility.getGlobalContext().getUserId();\n\nconsole.log('Environment ID:', envId);\nconsole.log('Organization URL:', orgUrl);\nconsole.log('Current User ID:', userId);\n\n// Show in alert\nXrm.Navigation.openAlertDialog({\n  text: `Environment: ${orgUrl}\\nUser: ${userId}`,\n  title: 'Environment Information'\n});"
+        },
+        {
+            "name": "Show All Field Names",
+            "description": "Display all fields in a dialog for easy access",
+            "icon": "📋",
+            "code": "// List all fields in the current form\nconst formContext = Xrm.Page;\nconst attributes = formContext.data.entity.attributes.get();\n\nlet fieldList = 'Fields:';\n\nattributes.forEach(attr => {\n  fieldList += `- ${attr.getName()}\\n`;\n});\n\nXrm.Navigation.openAlertDialog({\n  text: fieldList,\n  title: 'All Fields'\n});"
+        }
+    ]
+}
