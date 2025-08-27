@@ -2,7 +2,7 @@
 
 Welcome to the Level Up Community Commands repository! 🚀
 
-This repository serves as the central hub for sharing and discovering custom JavaScript commands for the [Level Up for Dynamics 365](https://github.com/rajyraman/level-up-vnext) browser extension.
+This repository serves as the central hub for sharing and discovering custom JavaScript commands for the [Level Up for Dynamics 365](https://github.com/rajyraman/Levelup-for-Dynamics-CRM) browser extension.
 
 ## 🎯 What is this?
 
@@ -72,7 +72,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙋‍♀️ Support
 
-- **Extension Issues**: Report Level Up extension bugs in the [main repository](https://github.com/rajyraman/level-up-vnext)
+- **Extension Issues**: Report Level Up extension bugs in the [main repository](https://github.com/rajyraman/Levelup-for-Dynamics-CRM)
 - **Command Issues**: Report community command issues here using our templates
 - **Discussions**: Join discussions in the Issues section
 
@@ -87,3 +87,4 @@ Check out some of our most popular community commands:
 **Made with ❤️ by the Dynamics 365 community**
 
 _Level Up for Dynamics 365 - Supercharge your productivity!_
+
